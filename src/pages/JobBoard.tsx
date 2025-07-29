@@ -464,7 +464,7 @@ const JobBoard = () => {
                               ? 'bg-red-100 text-red-700 border-red-200' 
                               : job.deadline.includes('1 day') 
                                 ? 'bg-orange-100 text-orange-700 border-orange-200'
-                                : 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                : 'bg-blue-100 text-blue-700 border-blue-200'
                           }`}
                         >
                           {job.deadline === 'same day' ? 'URGENT' : `${job.deadline} left`}
