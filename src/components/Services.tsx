@@ -6,26 +6,50 @@ export const Services = () => {
     {
       title: "Legal Services",
       description: "Legal document review, contract completion, compliance verification",
-      expertise: ["Contract Law", "Corporate Legal", "Regulatory Compliance", "Litigation Support"],
-      deliverables: ["Legal Briefs", "Contract Reviews", "Compliance Reports", "Motion Drafts"]
+      expertise: ["Contract Law", "Corporate Legal", "Regulatory Compliance", "Litigation Support", "IP Law", "Employment Law"],
+      deliverables: ["Legal Briefs", "Contract Reviews", "Compliance Reports", "Motion Drafts", "Patent Applications", "Employment Agreements"]
     },
     {
       title: "Financial Analysis", 
       description: "Financial statement analysis, budget completion, investment recommendations",
-      expertise: ["Financial Planning", "Risk Assessment", "Investment Analysis", "Tax Strategy"],
-      deliverables: ["Financial Models", "Investment Reports", "Budget Analysis", "Tax Documents"]
+      expertise: ["Financial Planning", "Risk Assessment", "Investment Analysis", "Tax Strategy", "Forensic Accounting", "Valuation"],
+      deliverables: ["Financial Models", "Investment Reports", "Budget Analysis", "Tax Documents", "Audit Reports", "Valuation Reports"]
     },
     {
       title: "Marketing Strategy",
       description: "Marketing plan finalization, campaign optimization, brand strategy",
-      expertise: ["Digital Marketing", "Brand Strategy", "Content Marketing", "Performance Marketing"],
-      deliverables: ["Marketing Plans", "Campaign Strategies", "Brand Guidelines", "Content Calendars"]
+      expertise: ["Digital Marketing", "Brand Strategy", "Content Marketing", "Performance Marketing", "SEO/SEM", "Social Media"],
+      deliverables: ["Marketing Plans", "Campaign Strategies", "Brand Guidelines", "Content Calendars", "SEO Audits", "Ad Copy"]
     },
     {
       title: "Business Consulting",
       description: "Strategic planning, operational optimization, project management",
-      expertise: ["Strategy Development", "Process Optimization", "Change Management", "Business Analysis"],
-      deliverables: ["Strategic Plans", "Process Maps", "Project Plans", "Business Cases"]
+      expertise: ["Strategy Development", "Process Optimization", "Change Management", "Business Analysis", "Operations", "HR Consulting"],
+      deliverables: ["Strategic Plans", "Process Maps", "Project Plans", "Business Cases", "Operational Procedures", "HR Policies"]
+    },
+    {
+      title: "Technical & Engineering",
+      description: "Technical documentation, system architecture, engineering reviews",
+      expertise: ["Software Architecture", "Technical Writing", "Code Review", "System Design", "Security Assessment", "DevOps"],
+      deliverables: ["Technical Specs", "Architecture Docs", "Code Reviews", "Security Reports", "API Documentation", "System Diagrams"]
+    },
+    {
+      title: "Healthcare & Medical",
+      description: "Medical documentation, compliance reviews, healthcare consulting",
+      expertise: ["Medical Writing", "Healthcare Compliance", "Clinical Research", "Medical Device", "Regulatory Affairs", "Healthcare IT"],
+      deliverables: ["Medical Reports", "Compliance Documents", "Clinical Protocols", "Regulatory Submissions", "Medical Devices", "Health Records"]
+    },
+    {
+      title: "Design & Creative",
+      description: "Creative finalization, design reviews, brand development",
+      expertise: ["Graphic Design", "UX/UI Design", "Brand Development", "Video Production", "Web Design", "Print Design"],
+      deliverables: ["Design Assets", "Brand Guidelines", "UI/UX Designs", "Video Content", "Website Designs", "Print Materials"]
+    },
+    {
+      title: "Academic & Research",
+      description: "Research completion, academic writing, data analysis",
+      expertise: ["Academic Writing", "Research Methods", "Data Analysis", "Grant Writing", "Peer Review", "Statistical Analysis"],
+      deliverables: ["Research Papers", "Grant Proposals", "Data Reports", "Academic Articles", "Literature Reviews", "Statistical Models"]
     }
   ];
 

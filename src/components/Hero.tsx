@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 import heroImage from "@/assets/hero-marketplace.jpg";
 
 export const Hero = () => {
@@ -17,17 +18,21 @@ export const Hero = () => {
               <p className="text-xl text-muted-foreground leading-relaxed">
                 The professional services marketplace where AI-enhanced deliverables 
                 meet expert finishing touches. Connect businesses with specialized 
-                professionals to complete your critical projects.
+                professionals to complete your critical projects: 70% - 95% cost reduction 5X - 25X faster
               </p>
             </div>
             
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button variant="premium" size="xl">
-                Submit a Project
-              </Button>
-              <Button variant="outline" size="xl">
-                Find Expert Work
-              </Button>
+              <Link to="/submit-project">
+                <Button variant="premium" size="xl">
+                  Submit a Project
+                </Button>
+              </Link>
+              <Link to="/find-work">
+                <Button variant="outline" size="xl">
+                  Find Expert Work
+                </Button>
+              </Link>
             </div>
             
             <div className="flex items-center gap-6 text-sm text-muted-foreground">

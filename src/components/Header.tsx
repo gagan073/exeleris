@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 export const Header = () => {
   return (
@@ -19,9 +20,9 @@ export const Header = () => {
             <a href="#services" className="text-foreground hover:text-primary transition-colors">
               Services
             </a>
-            <a href="#about" className="text-foreground hover:text-primary transition-colors">
-              About
-            </a>
+            <Link to="/jobs" className="text-foreground hover:text-primary transition-colors">
+              Browse Jobs
+            </Link>
           </nav>
           
           <div className="flex items-center space-x-4">
