@@ -1,0 +1,117 @@
+export type AppRole = "business" | "expert" | "super_admin";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type ProjectStatus = "draft" | "published";
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  email: string;
+  role: AppRole;
+  company_name: string | null;
+  created_at: string;
+}
+
+export interface ExpertProfile {
+  id: string;
+  headline: string | null;
+  professional_type: string | null;
+  license_number: string | null;
+  years_experience: string | null;
+  skills: string[];
+  categories: string[];
+  approval_status: ApprovalStatus;
+  created_at: string;
+}
+
+export interface Project {
+  id: string;
+  business_id: string | null;
+  company_name: string;
+  title: string;
+  category: string;
+  description: string;
+  completion_percent: number;
+  skills: string[];
+  ai_tools: string[];
+  budget_min: number;
+  budget_max: number;
+  deadline: string | null;
+  status: ProjectStatus;
+  created_at: string;
+}
+
+export interface Bid {
+  id: string;
+  project_id: string;
+  expert_id: string;
+  hourly_rate: number;
+  estimated_hours: number;
+  completion_time: string | null;
+  approach: string | null;
+  experience: string | null;
+  questions: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface ProjectFile {
+  id: string;
+  project_id: string;
+  file_name: string;
+  storage_path: string;
+  is_confidential: boolean;
+  created_at: string;
+}
+
+export const SERVICE_CATEGORIES = [
+  "Legal Services",
+  "Financial Analysis",
+  "Marketing Strategy",
+  "Business Consulting",
+  "Technical & Engineering",
+  "Healthcare & Medical",
+  "Design & Creative",
+  "Academic & Research",
+] as const;
+
+export const PROFESSIONAL_TYPES = [
+  "Attorney",
+  "CPA / Accountant",
+  "Fractional CFO",
+  "Consultant",
+  "Marketing Professional",
+  "Engineer",
+  "Medical Professional",
+  "Designer",
+  "Researcher",
+  "Other",
+] as const;
+
+export const ALLOWED_AI_TOOLS = [
+  "Claude",
+  "ChatGPT",
+  "Gemini",
+  "Jasper",
+  "Copilot",
+  "Perplexity",
+  "Other",
+] as const;
+
+export const EXPERIENCE_LEVELS = [
+  { value: "1-3", label: "1-3 years" },
+  { value: "3-5", label: "3-5 years" },
+  { value: "5-10", label: "5-10 years" },
+  { value: "10-15", label: "10-15 years" },
+  { value: "15+", label: "15+ years" },
+] as const;
+
+export const SKILLS_BY_CATEGORY: Record<string, string[]> = {
+  "Legal Services": ["Contract Law", "Corporate Legal", "Regulatory Compliance", "Litigation Support", "IP Law", "Employment Law"],
+  "Financial Analysis": ["Financial Planning", "Risk Assessment", "Investment Analysis", "Tax Strategy", "Forensic Accounting", "Valuation"],
+  "Marketing Strategy": ["Digital Marketing", "Brand Strategy", "Content Marketing", "Performance Marketing", "SEO/SEM", "Social Media"],
+  "Business Consulting": ["Strategy Development", "Process Optimization", "Change Management", "Business Analysis", "Operations", "HR Consulting"],
+  "Technical & Engineering": ["Software Architecture", "Technical Writing", "Code Review", "System Design", "Security Assessment", "DevOps"],
+  "Healthcare & Medical": ["Medical Writing", "Healthcare Compliance", "Clinical Research", "Medical Device", "Regulatory Affairs", "Healthcare IT"],
+  "Design & Creative": ["Graphic Design", "UX/UI Design", "Brand Development", "Video Production", "Web Design", "Print Design"],
+  "Academic & Research": ["Academic Writing", "Research Methods", "Data Analysis", "Grant Writing", "Peer Review", "Statistical Analysis"],
+};

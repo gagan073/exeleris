@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,30 +6,185 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Header } from "@/components/Header";
-import { ArrowLeft, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, Upload, FileText, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { SERVICE_CATEGORIES, ALLOWED_AI_TOOLS, SKILLS_BY_CATEGORY, ProjectStatus } from "@/types/database";
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+interface SelectedFile {
+  file: File;
+  isConfidential: boolean;
+}
 
 const SubmitProject = () => {
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [aiToolsUsed, setAiToolsUsed] = useState<string[]>([]);
+  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const serviceCategories = [
-    "Legal Services", "Financial Analysis", "Marketing Strategy", "Business Consulting",
-    "Technical & Engineering", "Healthcare & Medical", "Design & Creative", "Academic & Research"
-  ];
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [completionPercent, setCompletionPercent] = useState(80);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [submitting, setSubmitting] = useState<ProjectStatus | null>(null);
 
-  const commonAITools = [
-    "GPT-4", "Claude", "Gemini", "Copilot", "Jasper", "Copy.ai", "Grammarly Business",
-    "Notion AI", "Canva AI", "Midjourney", "DALL-E", "Custom AI Tools"
-  ];
+  const today = new Date().toISOString().split("T")[0];
+  const suggestedSkills = category ? SKILLS_BY_CATEGORY[category] || [] : [];
 
-  const toggleAITool = (tool: string) => {
-    setAiToolsUsed(prev => 
-      prev.includes(tool) 
-        ? prev.filter(t => t !== tool)
-        : [...prev, tool]
+  const handleCategoryChange = (value: string) => {
+    setCategory(value);
+    setSelectedSkills([]);
+  };
+
+  const toggleSkill = (skill: string) => {
+    setSelectedSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
     );
+  };
+
+  const toggleTool = (tool: string) => {
+    setSelectedTools((prev) =>
+      prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]
+    );
+  };
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+    const accepted: SelectedFile[] = [];
+    picked.forEach((file) => {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`"${file.name}" is over the 50MB limit`);
+      } else {
+        accepted.push({ file, isConfidential: false });
+      }
+    });
+    if (accepted.length > 0) {
+      setFiles((prev) => [...prev, ...accepted]);
+    }
+    // Allow re-selecting the same file later
+    e.target.value = "";
+  };
+
+  const toggleConfidential = (index: number) => {
+    setFiles((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, isConfidential: !f.isConfidential } : f))
+    );
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (status: ProjectStatus) => {
+    if (!title.trim()) {
+      toast.error("Please enter a project title");
+      return;
+    }
+    if (!category) {
+      toast.error("Please select a service category");
+      return;
+    }
+    if (status === "published") {
+      if (!description.trim()) {
+        toast.error("Please describe your project");
+        return;
+      }
+      const min = Number(budgetMin);
+      const max = Number(budgetMax);
+      if (!budgetMin || min <= 0) {
+        toast.error("Please enter a minimum budget greater than $0");
+        return;
+      }
+      if (!budgetMax || max <= 0) {
+        toast.error("Please enter a maximum budget greater than $0");
+        return;
+      }
+      if (min > max) {
+        toast.error("Minimum budget cannot be greater than maximum budget");
+        return;
+      }
+    }
+    if (!user) {
+      toast.error("You must be signed in to submit a project");
+      return;
+    }
+
+    setSubmitting(status);
+    try {
+      const { data: project, error } = await supabase
+        .from("projects")
+        .insert({
+          business_id: user.id,
+          company_name: profile?.company_name || profile?.full_name || "",
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          completion_percent: completionPercent,
+          skills: selectedSkills,
+          ai_tools: selectedTools,
+          budget_min: Number(budgetMin) || 0,
+          budget_max: Number(budgetMax) || 0,
+          deadline: deadline || null,
+          status,
+        })
+        .select()
+        .single();
+
+      if (error || !project) {
+        toast.error(error?.message || "Failed to save your project. Please try again.");
+        return;
+      }
+
+      // Upload files concurrently. The index keeps paths unique even when
+      // Date.now() returns the same millisecond for two files.
+      const uploadResults = await Promise.allSettled(
+        files.map(async (item, index) => {
+          const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${project.id}/${Date.now()}-${index}-${safeName}`;
+          const { error: uploadError } = await supabase.storage
+            .from("project-files")
+            .upload(path, item.file);
+          if (uploadError) throw uploadError;
+          const { error: fileError } = await supabase.from("project_files").insert({
+            project_id: project.id,
+            file_name: item.file.name,
+            storage_path: path,
+            is_confidential: item.isConfidential,
+          });
+          if (fileError) throw fileError;
+        })
+      );
+      const failedUploads = uploadResults
+        .map((result, index) => (result.status === "rejected" ? files[index].file.name : null))
+        .filter((name): name is string => name !== null);
+
+      if (failedUploads.length > 0) {
+        toast.warning(
+          `Project saved, but these files failed to upload: ${failedUploads.join(", ")}`
+        );
+      } else {
+        toast.success(
+          status === "draft"
+            ? "Draft saved — find it on your dashboard"
+            : "Your project is live on the marketplace!"
+        );
+      }
+      navigate("/dashboard");
+    } finally {
+      setSubmitting(null);
+    }
   };
 
   return (
@@ -59,43 +214,26 @@ const SubmitProject = () => {
                 <CardTitle>Project Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="company">Company Name</Label>
-                    <Input id="company" placeholder="Your company name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contact">Contact Person</Label>
-                    <Input id="contact" placeholder="Your name" />
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" placeholder="your@email.com" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone (Optional)</Label>
-                    <Input id="phone" placeholder="+1 (555) 123-4567" />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="project-title">Project Title *</Label>
+                  <Input
+                    id="project-title"
+                    placeholder="Brief, descriptive title of your project"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="project-title">Project Title</Label>
-                  <Input id="project-title" placeholder="Brief, descriptive title of your project" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="category">Service Category</Label>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger>
+                  <Label htmlFor="category">Service Category *</Label>
+                  <Select value={category} onValueChange={handleCategoryChange}>
+                    <SelectTrigger id="category">
                       <SelectValue placeholder="Select service category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {serviceCategories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
+                      {SERVICE_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -103,41 +241,70 @@ const SubmitProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Project Description</Label>
-                  <Textarea 
-                    id="description" 
+                  <Label htmlFor="description">Project Description *</Label>
+                  <Textarea
+                    id="description"
                     placeholder="Describe your project, what's been completed, and what needs expert finishing..."
                     className="min-h-[120px]"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="completion">Completion Percentage</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="How complete is your deliverable?" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="70-80">70-80% Complete</SelectItem>
-                      <SelectItem value="80-90">80-90% Complete</SelectItem>
-                      <SelectItem value="90-95">90-95% Complete</SelectItem>
-                      <SelectItem value="95+">95%+ Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between">
+                    <Label>How complete is your deliverable?</Label>
+                    <span className="text-accent font-semibold">{completionPercent}% Complete</span>
+                  </div>
+                  <Slider
+                    value={[completionPercent]}
+                    onValueChange={(value) => setCompletionPercent(value[0])}
+                    min={0}
+                    max={100}
+                    step={5}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Estimate how much of the work is already done.
+                  </p>
                 </div>
 
-                <div className="space-y-4">
-                  <Label>AI Tools Used</Label>
+                <div className="space-y-2">
+                  <Label>Required Skills</Label>
                   <p className="text-sm text-muted-foreground">
-                    Select all AI tools used to create this deliverable (helps experts understand the foundation)
+                    Select the skills the expert should have
+                  </p>
+                  {suggestedSkills.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedSkills.map((skill) => (
+                        <Badge
+                          key={skill}
+                          variant={selectedSkills.includes(skill) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => toggleSkill(skill)}
+                        >
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Choose a service category to see suggested skills
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Allowed AI Tools</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Which AI tools is the expert allowed to use on this project?
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {commonAITools.map((tool) => (
+                    {ALLOWED_AI_TOOLS.map((tool) => (
                       <Badge
                         key={tool}
-                        variant={aiToolsUsed.includes(tool) ? "default" : "outline"}
+                        variant={selectedTools.includes(tool) ? "default" : "outline"}
                         className="cursor-pointer"
-                        onClick={() => toggleAITool(tool)}
+                        onClick={() => toggleTool(tool)}
                       >
                         {tool}
                       </Badge>
@@ -146,28 +313,57 @@ const SubmitProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="deadline">Desired Completion Date</Label>
-                  <Input id="deadline" type="date" />
+                  <Label>Budget Range (USD) *</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="budget-min" className="text-sm text-muted-foreground">
+                        Minimum ($)
+                      </Label>
+                      <Input
+                        id="budget-min"
+                        type="number"
+                        min={1}
+                        placeholder="500"
+                        value={budgetMin}
+                        onChange={(e) => setBudgetMin(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="budget-max" className="text-sm text-muted-foreground">
+                        Maximum ($)
+                      </Label>
+                      <Input
+                        id="budget-max"
+                        type="number"
+                        min={1}
+                        placeholder="1,500"
+                        value={budgetMax}
+                        onChange={(e) => setBudgetMax(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="budget">Budget Range</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select budget range" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="under-500">Under $500</SelectItem>
-                      <SelectItem value="500-1000">$500 - $1,000</SelectItem>
-                      <SelectItem value="1000-2500">$1,000 - $2,500</SelectItem>
-                      <SelectItem value="2500-5000">$2,500 - $5,000</SelectItem>
-                      <SelectItem value="5000+">$5,000+</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="deadline">Desired Completion Date</Label>
+                  <Input
+                    id="deadline"
+                    type="date"
+                    min={today}
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                  />
                 </div>
 
-                <div className="space-y-4">
-                  <Label>Upload Files</Label>
+                <div className="space-y-2">
+                  <Label>Project Documents</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleFilesSelected}
+                  />
                   <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
                     <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground mb-2">
@@ -176,23 +372,75 @@ const SubmitProject = () => {
                     <p className="text-sm text-muted-foreground mb-4">
                       Supported: PDF, DOCX, XLSX, PPT, ZIP (Max 50MB)
                     </p>
-                    <Button variant="outline">Choose Files</Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Choose Files
+                    </Button>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="special-requirements">Special Requirements</Label>
-                  <Textarea 
-                    id="special-requirements" 
-                    placeholder="Any specific requirements, preferences, or additional context for the expert..."
-                    className="min-h-[80px]"
-                  />
+                  {files.length > 0 && (
+                    <div className="space-y-2">
+                      {files.map((item, index) => (
+                        <div
+                          key={`${item.file.name}-${index}`}
+                          className="flex items-center justify-between bg-muted/30 rounded-md px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-accent shrink-0" />
+                            <span className="text-sm truncate">{item.file.name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {Math.max(1, Math.round(item.file.size / 1024))} KB
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 shrink-0">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`confidential-${index}`}
+                                checked={item.isConfidential}
+                                onCheckedChange={() => toggleConfidential(index)}
+                              />
+                              <Label htmlFor={`confidential-${index}`} className="text-sm">
+                                Confidential
+                              </Label>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(index)}
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                              aria-label={`Remove ${item.file.name}`}
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-6 border-t">
-                  <Button size="lg" className="w-full">
-                    Submit Project for Expert Review
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="flex-1"
+                      disabled={submitting !== null}
+                      onClick={() => handleSubmit("draft")}
+                    >
+                      {submitting === "draft" ? "Saving..." : "Save as Draft"}
+                    </Button>
+                    <Button
+                      variant="accent"
+                      size="lg"
+                      className="flex-1"
+                      disabled={submitting !== null}
+                      onClick={() => handleSubmit("published")}
+                    >
+                      {submitting === "published" ? "Publishing..." : "Publish to Marketplace"}
+                    </Button>
+                  </div>
                   <p className="text-sm text-muted-foreground text-center mt-4">
                     You'll receive expert bids within 24-48 hours
                   </p>

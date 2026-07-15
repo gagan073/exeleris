@@ -1,18 +1,36 @@
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/hooks/useAuth";
+import { ChevronDown, LayoutDashboard, LogOut, User } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 
 export const Header = () => {
+  const { user, profile, loading, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const displayName = profile?.full_name || user?.email;
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
+
   return (
     <header className="absolute top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <Link to="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-hero-gradient rounded-lg flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-sm">E</span>
             </div>
             <span className="text-xl font-bold text-foreground">Exeleris</span>
-          </div>
-          
+          </Link>
+
           <nav className="hidden md:flex items-center space-x-8">
             <a href="#how-it-works" className="text-foreground hover:text-primary transition-colors">
               How It Works
@@ -24,10 +42,38 @@ export const Header = () => {
               Browse Jobs
             </Link>
           </nav>
-          
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost">Sign In</Button>
-            <Button variant="accent">Get Started</Button>
+
+          <div className="flex items-center space-x-4 min-h-[40px]">
+            {loading ? null : user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2">
+                    <User className="w-4 h-4" />
+                    <span className="max-w-[160px] truncate">{displayName}</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate("/dashboard")}>
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost">Sign In</Button>
+                </Link>
+                <Link to="/auth?mode=signup">
+                  <Button variant="accent">Get Started</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>
