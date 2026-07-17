@@ -35,6 +35,25 @@ export interface ExpertProfile {
   created_at: string;
 }
 
+// The AI's analysis of an uploaded deliverable. Saved with the project and
+// shown to experts as the "AI Completeness Report". Produced by the
+// analyze-deliverable Edge Function (see AI_FEATURE_SETUP.md).
+export interface DeliverableAnalysis {
+  title: string;
+  category: string;
+  summary: string;
+  completeness_percent: number;
+  remaining_work: string[];
+  skills: string[];
+  budget_min: number;
+  budget_max: number;
+  expert_questions: string[];
+  // Added on the client after a successful analysis:
+  source_file_name?: string;
+  model?: string;
+  analyzed_at?: string;
+}
+
 export interface Project {
   id: string;
   business_id: string | null;
@@ -50,6 +69,7 @@ export interface Project {
   deadline: string | null;
   status: ProjectStatus;
   created_at: string;
+  ai_analysis?: DeliverableAnalysis | null;
 }
 
 export interface Bid {

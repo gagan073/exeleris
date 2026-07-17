@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Header } from "@/components/Header";
 import { ProjectStatusBadge } from "@/components/StatusBadge";
+import { AiCompletenessReport } from "@/components/AiCompletenessReport";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency, deadlineText } from "@/lib/format";
@@ -302,6 +303,10 @@ const ProjectDetail = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+                {project.ai_analysis && (
+                  <AiCompletenessReport analysis={project.ai_analysis} />
+                )}
               </div>
 
               {/* Sidebar CTA */}

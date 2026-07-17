@@ -9,14 +9,34 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Header } from "@/components/Header";
-import { ArrowLeft, Upload, FileText, X } from "lucide-react";
+import { AiDeliverableUpload } from "@/components/AiDeliverableUpload";
+import { ArrowLeft, Upload, FileText, X, Sparkles, Info } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { SERVICE_CATEGORIES, ALLOWED_AI_TOOLS, SKILLS_BY_CATEGORY, ProjectStatus } from "@/types/database";
+import {
+  SERVICE_CATEGORIES,
+  ALLOWED_AI_TOOLS,
+  SKILLS_BY_CATEGORY,
+  ProjectStatus,
+  DeliverableAnalysis,
+} from "@/types/database";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+// Feature switch for the "AI drafts your listing" step. Off unless the site is
+// built with VITE_ENABLE_AI_ANALYSIS=true (see AI_FEATURE_SETUP.md).
+const AI_ENABLED = import.meta.env.VITE_ENABLE_AI_ANALYSIS === "true";
+
+// Small "AI-suggested" tag shown next to fields the AI filled in. It disappears
+// once the business edits that field.
+const AiSuggestedTag = () => (
+  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-accent bg-accent/10 rounded px-1.5 py-0.5 align-middle">
+    <Sparkles className="w-3 h-3" />
+    AI-suggested
+  </span>
+);
 
 interface SelectedFile {
   file: File;
@@ -40,18 +60,80 @@ const SubmitProject = () => {
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [submitting, setSubmitting] = useState<ProjectStatus | null>(null);
 
+  // AI-drafted-listing state.
+  const [aiAnalysis, setAiAnalysis] = useState<DeliverableAnalysis | null>(null);
+  const [expertQuestions, setExpertQuestions] = useState<string[]>([]);
+  // Which fields the AI filled in (used to show the "AI-suggested" tag until the
+  // business edits that field).
+  const [aiFields, setAiFields] = useState<Record<string, boolean>>({});
+
   const today = new Date().toISOString().split("T")[0];
   const suggestedSkills = category ? SKILLS_BY_CATEGORY[category] || [] : [];
+  // Show the category's suggested skills plus any AI-suggested skills that
+  // aren't already in that list, so custom AI skills stay visible and editable.
+  const displayedSkills = Array.from(new Set([...suggestedSkills, ...selectedSkills]));
+
+  const clearAiField = (name: string) =>
+    setAiFields((prev) => (prev[name] ? { ...prev, [name]: false } : prev));
 
   const handleCategoryChange = (value: string) => {
     setCategory(value);
     setSelectedSkills([]);
+    clearAiField("category");
+    clearAiField("skills");
   };
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills((prev) =>
       prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
     );
+    clearAiField("skills");
+  };
+
+  // Turn the AI summary + remaining-work list into a ready-to-edit description.
+  const composeDescription = (a: DeliverableAnalysis) => {
+    let d = (a.summary || "").trim();
+    if (a.remaining_work?.length) {
+      d +=
+        (d ? "\n\n" : "") +
+        "Remaining work for the expert:\n" +
+        a.remaining_work.map((w) => `• ${w}`).join("\n");
+    }
+    return d;
+  };
+
+  // Called by the AI upload step. Always attaches the uploaded document to the
+  // project; if the analysis succeeded, it also fills the form.
+  const applyAnalysis = (file: File, analysis: DeliverableAnalysis | null) => {
+    // Attach the deliverable as the project's main file (first in the list).
+    setFiles((prev) => [{ file, isConfidential: false }, ...prev]);
+
+    if (!analysis) return; // graceful failure — the upload step shows the message
+
+    if (analysis.title) setTitle(analysis.title);
+    if (analysis.category) setCategory(analysis.category); // direct, so skills below aren't cleared
+    if (analysis.skills?.length) setSelectedSkills(analysis.skills);
+    if (typeof analysis.completeness_percent === "number") {
+      setCompletionPercent(
+        Math.min(100, Math.max(0, Math.round(analysis.completeness_percent)))
+      );
+    }
+    if (analysis.budget_min) setBudgetMin(String(analysis.budget_min));
+    if (analysis.budget_max) setBudgetMax(String(analysis.budget_max));
+    setDescription(composeDescription(analysis));
+    setExpertQuestions(analysis.expert_questions || []);
+    setAiAnalysis(analysis);
+
+    setAiFields({
+      title: !!analysis.title,
+      category: !!analysis.category,
+      description: true,
+      completion: true,
+      skills: (analysis.skills?.length || 0) > 0,
+      budget: !!analysis.budget_min || !!analysis.budget_max,
+    });
+
+    toast.success("Draft ready — review and edit any field before publishing.");
   };
 
   const toggleTool = (tool: string) => {
@@ -138,6 +220,7 @@ const SubmitProject = () => {
           budget_max: Number(budgetMax) || 0,
           deadline: deadline || null,
           status,
+          ai_analysis: aiAnalysis,
         })
         .select()
         .single();
@@ -214,18 +297,34 @@ const SubmitProject = () => {
                 <CardTitle>Project Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                {AI_ENABLED && (
+                  <AiDeliverableUpload
+                    onAnalyzed={applyAnalysis}
+                    disabled={submitting !== null}
+                  />
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="project-title">Project Title *</Label>
+                  <Label htmlFor="project-title" className="flex items-center gap-2">
+                    Project Title *
+                    {aiFields.title && <AiSuggestedTag />}
+                  </Label>
                   <Input
                     id="project-title"
                     placeholder="Brief, descriptive title of your project"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      clearAiField("title");
+                    }}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="category">Service Category *</Label>
+                  <Label htmlFor="category" className="flex items-center gap-2">
+                    Service Category *
+                    {aiFields.category && <AiSuggestedTag />}
+                  </Label>
                   <Select value={category} onValueChange={handleCategoryChange}>
                     <SelectTrigger id="category">
                       <SelectValue placeholder="Select service category" />
@@ -241,24 +340,58 @@ const SubmitProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Project Description *</Label>
+                  <Label htmlFor="description" className="flex items-center gap-2">
+                    Project Description *
+                    {aiFields.description && <AiSuggestedTag />}
+                  </Label>
                   <Textarea
                     id="description"
                     placeholder="Describe your project, what's been completed, and what needs expert finishing..."
                     className="min-h-[120px]"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => {
+                      setDescription(e.target.value);
+                      clearAiField("description");
+                    }}
                   />
                 </div>
 
+                {expertQuestions.length > 0 && (
+                  <div className="rounded-lg border border-accent/20 bg-accent/5 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Info className="w-4 h-4 text-accent shrink-0" />
+                      <p className="text-sm font-medium text-foreground">
+                        Experts will probably ask these — consider answering them
+                        in your description.
+                      </p>
+                    </div>
+                    <ul className="space-y-1 pl-6">
+                      {expertQuestions.map((q, i) => (
+                        <li
+                          key={i}
+                          className="text-sm text-muted-foreground list-disc"
+                        >
+                          {q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>How complete is your deliverable?</Label>
+                    <Label className="flex items-center gap-2">
+                      How complete is your deliverable?
+                      {aiFields.completion && <AiSuggestedTag />}
+                    </Label>
                     <span className="text-accent font-semibold">{completionPercent}% Complete</span>
                   </div>
                   <Slider
                     value={[completionPercent]}
-                    onValueChange={(value) => setCompletionPercent(value[0])}
+                    onValueChange={(value) => {
+                      setCompletionPercent(value[0]);
+                      clearAiField("completion");
+                    }}
                     min={0}
                     max={100}
                     step={5}
@@ -269,13 +402,16 @@ const SubmitProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Required Skills</Label>
+                  <Label className="flex items-center gap-2">
+                    Required Skills
+                    {aiFields.skills && <AiSuggestedTag />}
+                  </Label>
                   <p className="text-sm text-muted-foreground">
                     Select the skills the expert should have
                   </p>
-                  {suggestedSkills.length > 0 ? (
+                  {displayedSkills.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                      {suggestedSkills.map((skill) => (
+                      {displayedSkills.map((skill) => (
                         <Badge
                           key={skill}
                           variant={selectedSkills.includes(skill) ? "default" : "outline"}
@@ -313,7 +449,10 @@ const SubmitProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Budget Range (USD) *</Label>
+                  <Label className="flex items-center gap-2">
+                    Budget Range (USD) *
+                    {aiFields.budget && <AiSuggestedTag />}
+                  </Label>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="budget-min" className="text-sm text-muted-foreground">
@@ -325,7 +464,10 @@ const SubmitProject = () => {
                         min={1}
                         placeholder="500"
                         value={budgetMin}
-                        onChange={(e) => setBudgetMin(e.target.value)}
+                        onChange={(e) => {
+                          setBudgetMin(e.target.value);
+                          clearAiField("budget");
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
@@ -338,7 +480,10 @@ const SubmitProject = () => {
                         min={1}
                         placeholder="1,500"
                         value={budgetMax}
-                        onChange={(e) => setBudgetMax(e.target.value)}
+                        onChange={(e) => {
+                          setBudgetMax(e.target.value);
+                          clearAiField("budget");
+                        }}
                       />
                     </div>
                   </div>
