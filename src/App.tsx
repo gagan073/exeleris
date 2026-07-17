@@ -9,7 +9,9 @@ import Index from "./pages/Index";
 import SubmitProject from "./pages/SubmitProject";
 import FindWork from "./pages/FindWork";
 import JobBoard from "./pages/JobBoard";
+import ProjectDetail from "./pages/ProjectDetail";
 import SubmitBid from "./pages/SubmitBid";
+import BidComparison from "./pages/BidComparison";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
@@ -44,11 +46,20 @@ const App = () => (
             />
             <Route path="/find-work" element={<FindWork />} />
             <Route path="/jobs" element={<JobBoard />} />
+            <Route path="/job/:jobId" element={<ProjectDetail />} />
             <Route
               path="/job/:jobId/bid"
               element={
                 <ProtectedRoute allowedRoles={["expert"]}>
                   <SubmitBid />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/project/:projectId/bids"
+              element={
+                <ProtectedRoute allowedRoles={["business", "super_admin"]}>
+                  <BidComparison />
                 </ProtectedRoute>
               }
             />

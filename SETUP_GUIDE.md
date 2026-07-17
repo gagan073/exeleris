@@ -100,10 +100,80 @@ Do these in order — about 5 minutes:
 4. **Save a draft:** post another project but click **Save as Draft**. It should show on your dashboard marked **Draft** — and should NOT appear on Browse Jobs. On the draft's card, click **Publish to Marketplace** and confirm it now appears on Browse Jobs. (Each project card also has a **Delete** button, handy for clearing out test projects.)
 5. **Sign out** (click your name in the header → Sign Out).
 6. **Create an expert account:** click **Get Started** → choose **Expert** → fill everything in. Your dashboard should show a friendly banner saying your application is being reviewed.
-7. **Try to bid while pending:** open **Browse Jobs**, click **Submit Bid** on any project. You should see the "being reviewed" message instead of a bid form.
-8. **Approve yourself as a test:** run the Part 7 SQL with the expert's email, then refresh the site. Now the bid form should appear — submit a bid with a rate and hours. Your expert dashboard should list the bid.
+7. **Try to bid while pending:** open **Browse Jobs**, click **View Details** on any project, then **Submit Bid**. You should see the "being reviewed" message instead of a bid form.
+8. **Approve yourself as a test:** run the Part 7 SQL with the expert's email, then refresh the site. Now the bid form should appear — submit a bid with a price and hours. Your expert dashboard should list the bid.
 9. **Bid twice:** try to bid on the same project again — the site should politely tell you that you already bid.
 10. **Check role locks:** while signed in as the expert, try visiting `/submit-project` directly in the address bar — you should be bounced back to your dashboard.
 11. **Super Admin:** sign in with your own (admin) account — your dashboard should show the Users / Transactions / Settings placeholder page.
 
 If every step works, the marketplace is officially real. 🎉
+
+---
+
+## Part 8 — Turn on real bidding & the bid comparison screen (one more copy-paste)
+
+This is the second (and, for now, final) database step. It adds everything the
+new bidding features need: the transaction record, notifications, the commission
+setting, and the safe "accept a winner" action. It only **adds** to your
+database — your accounts and your 30 projects are untouched.
+
+1. In Supabase's left sidebar, click **SQL Editor** → **New query**.
+2. On your computer, open the file **`supabase/bidding_upgrade.sql`** inside the
+   project folder (right-click → Open with → Notepad).
+3. Select **everything** (Ctrl+A), copy (Ctrl+C), paste into the SQL Editor (Ctrl+V).
+4. Click **Run**. You should see **"Success. No rows returned."**
+
+> If you ever see a message that something "already exists", that's fine — it
+> just means the file was already run. It's safe to run again.
+
+**About the commission:** the platform commission starts at **15%** and lives in
+a settings table (not hard-coded), so a future Super-Admin screen will be able to
+change it. Every accepted bid records the exact commission used at that moment,
+so your money history stays accurate even if you change the rate later.
+
+---
+
+## Testing checklist — the full bidding journey (plain English)
+
+Do this after Part 8. You'll need two accounts: your **business** account and one
+**expert** account (approve the expert first using the Part 7 SQL). About 10 minutes.
+
+1. **Expert places a bid.** Sign in as the approved expert → **Browse Jobs** →
+   **View Details** on a project → **Submit Bid**. Enter a **price for the whole
+   job** and **estimated hours** — notice the **price-per-hour** updates live as
+   you type. Add a completion date, approach, experience, and a question, then
+   **Submit Bid**. It should appear under **My Bids** with a **Pending** badge.
+2. **One bid per project.** Open that same project again — instead of a new form
+   you should see "You've already submitted a bid" with a link to view it.
+3. **Edit / withdraw.** On **My Bids**, while the bid is **Pending**, try **Edit**
+   (change the price and save) and confirm the change sticks. (You can also
+   **Withdraw** here — try it on a throwaway bid.)
+4. **Business sees the new bid.** Sign in as the business. The **bell** in the
+   header should show a red count, and clicking it shows "New bid received".
+   Your dashboard project card should show **"1 bid received"**.
+5. **Compare bids.** Click **Compare bids** on the project. Each bid shows the
+   expert's name and headline, price, hours, price-per-hour, completion date,
+   and their approach/experience/questions (long text has **Read more**). Try
+   the **Sort by** menu (cheapest / fewest hours / newest), the **Show
+   shortlisted only** switch, and **Shortlist** a bid. The cheapest bid is
+   gently highlighted.
+6. **Accept a winner.** Click **Accept** on a bid. A window shows the money split:
+   **bid amount**, **platform commission (15%)**, and **expert receives** — all
+   formatted like `$1,250.00`. Click **Confirm & Accept**.
+7. **Check what happened automatically:**
+   - The winning bid is now **Accepted**; every other bid on that project is
+     **Declined**.
+   - The project is now **In Progress** and has **disappeared from Browse Jobs**.
+   - The expert's dashboard shows the win under **Active Projects**, and the bell
+     notified them ("Bid accepted 🎉"). Any losing experts were notified too.
+8. **Check the money record.** In Supabase → **Table Editor** → **transactions**.
+   There should be one row for this project with the correct **total_amount**,
+   **commission_percent (15)**, **platform_earnings**, and **expert_payout**
+   (total minus commission). This is the permanent record for your future
+   payments.
+
+If all eight steps work, the heart of the marketplace is beating. ❤️
+
+> Note on confidential files: on a project's detail page, any file marked
+> **Confidential** shows as **locked** ("Available after your bid is accepted")
+> — its name is visible but it can't be opened by bidders.

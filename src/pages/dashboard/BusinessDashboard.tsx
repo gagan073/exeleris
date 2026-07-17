@@ -1,14 +1,17 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
-import { Clock, DollarSign, FolderOpen } from "lucide-react";
+import { Clock, DollarSign, FolderOpen, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProjectStatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { formatCurrency } from "@/lib/format";
 import { Project } from "@/types/database";
 
 const BusinessDashboard = () => {
@@ -28,6 +31,27 @@ const BusinessDashboard = () => {
       return (data ?? []) as Project[];
     },
   });
+
+  // RLS scopes this to bids on the current business's own projects, so a plain
+  // select returns exactly what we need to count.
+  const { data: bidRows } = useQuery({
+    queryKey: ["business-bid-counts", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("bids").select("project_id, status");
+      if (error) throw error;
+      return (data ?? []) as { project_id: string; status: string }[];
+    },
+  });
+
+  const bidCountByProject = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (bidRows ?? []).forEach((b) => {
+      if (b.status === "withdrawn") return; // don't count pulled bids
+      counts[b.project_id] = (counts[b.project_id] ?? 0) + 1;
+    });
+    return counts;
+  }, [bidRows]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["business-projects", user?.id] });
@@ -70,7 +94,7 @@ const BusinessDashboard = () => {
             <div>
               <h1 className="text-4xl font-bold text-foreground">My Projects</h1>
               <p className="text-xl text-muted-foreground mt-2">
-                Manage your posted projects and drafts
+                Manage your projects and review the bids they receive
               </p>
             </div>
             <Link to="/submit-project">
@@ -102,86 +126,98 @@ const BusinessDashboard = () => {
             </Card>
           ) : (
             <div className="grid gap-6">
-              {projects.map((project) => (
-                <Card
-                  key={project.id}
-                  className="hover:shadow-card transition-all duration-300"
-                >
-                  <CardHeader>
-                    <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <Badge
-                        variant="default"
-                        className="bg-accent text-accent-foreground"
-                      >
-                        {project.category}
-                      </Badge>
-                      {project.status === "draft" ? (
-                        <Badge variant="secondary">Draft</Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="border-accent/30 text-accent"
-                        >
-                          Published
+              {projects.map((project) => {
+                const bidCount = bidCountByProject[project.id] ?? 0;
+                const canDelete =
+                  project.status === "draft" || project.status === "published";
+                return (
+                  <Card
+                    key={project.id}
+                    className="hover:shadow-card transition-all duration-300"
+                  >
+                    <CardHeader>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <Badge variant="default" className="bg-accent text-accent-foreground">
+                          {project.category}
                         </Badge>
-                      )}
-                      <Badge variant="outline">
-                        {project.completion_percent}% Complete
-                      </Badge>
-                    </div>
-                    <CardTitle className="text-xl">{project.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />
-                        ${Number(project.budget_min).toLocaleString()} - $
-                        {Number(project.budget_max).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        {project.deadline
-                          ? format(parseISO(project.deadline), "MMM d, yyyy")
-                          : "Flexible"}
-                      </span>
-                      <span>
-                        Posted{" "}
-                        {formatDistanceToNow(new Date(project.created_at), {
-                          addSuffix: true,
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
-                      {project.status === "draft" && (
-                        <Button
-                          variant="accent"
-                          size="sm"
-                          onClick={() => publishMutation.mutate(project.id)}
-                          disabled={publishMutation.isPending}
+                        <ProjectStatusBadge status={project.status} />
+                        <Badge variant="outline">
+                          {project.completion_percent}% Complete
+                        </Badge>
+                      </div>
+                      <CardTitle className="text-xl">
+                        <Link
+                          to={`/job/${project.id}`}
+                          className="hover:text-accent transition-colors"
                         >
-                          Publish to Marketplace
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              "Delete this project? This cannot be undone."
-                            )
-                          ) {
-                            deleteMutation.mutate(project.id);
-                          }
-                        }}
-                        disabled={deleteMutation.isPending}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                          {project.title}
+                        </Link>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-2">
+                          <DollarSign className="w-4 h-4" />
+                          {formatCurrency(project.budget_min)} – {formatCurrency(project.budget_max)}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          {project.deadline
+                            ? format(parseISO(project.deadline), "MMM d, yyyy")
+                            : "Flexible"}
+                        </span>
+                        <span className="flex items-center gap-2 font-medium text-foreground">
+                          <Users className="w-4 h-4 text-accent" />
+                          {bidCount} {bidCount === 1 ? "bid" : "bids"} received
+                        </span>
+                        <span>
+                          Posted{" "}
+                          {formatDistanceToNow(new Date(project.created_at), {
+                            addSuffix: true,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
+                        {project.status !== "draft" && (
+                          <Button asChild variant="accent" size="sm">
+                            <Link to={`/project/${project.id}/bids`}>
+                              Compare bids{bidCount > 0 ? ` (${bidCount})` : ""}
+                            </Link>
+                          </Button>
+                        )}
+                        {project.status === "draft" && (
+                          <Button
+                            variant="accent"
+                            size="sm"
+                            onClick={() => publishMutation.mutate(project.id)}
+                            disabled={publishMutation.isPending}
+                          >
+                            Publish to Marketplace
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "Delete this project? This cannot be undone."
+                                )
+                              ) {
+                                deleteMutation.mutate(project.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

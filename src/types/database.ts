@@ -1,6 +1,18 @@
 export type AppRole = "business" | "expert" | "super_admin";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
-export type ProjectStatus = "draft" | "published";
+export type ProjectStatus =
+  | "draft"
+  | "published"
+  | "in_progress"
+  | "in_review"
+  | "completed"
+  | "cancelled";
+export type BidStatus =
+  | "pending"
+  | "shortlisted"
+  | "accepted"
+  | "declined"
+  | "withdrawn";
 
 export interface Profile {
   id: string;
@@ -44,14 +56,51 @@ export interface Bid {
   id: string;
   project_id: string;
   expert_id: string;
-  hourly_rate: number;
+  bid_amount: number;
   estimated_hours: number;
-  completion_time: string | null;
+  estimated_completion_date: string | null;
   approach: string | null;
   experience: string | null;
   questions: string | null;
+  status: BidStatus;
+  decline_reason: string | null;
+  created_at: string;
+  // Legacy columns kept for older test bids; no longer written by the app.
+  hourly_rate: number | null;
+  completion_time: string | null;
+}
+
+export interface Transaction {
+  id: string;
+  project_id: string;
+  winning_bid_id: string | null;
+  business_id: string | null;
+  expert_id: string | null;
+  total_amount: number;
+  commission_percent: number;
+  platform_earnings: number;
+  expert_payout: number;
   status: string;
   created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  link: string | null;
+  project_id: string | null;
+  bid_id: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface PlatformSettings {
+  id: boolean;
+  commission_percent: number;
+  updated_at: string;
 }
 
 export interface ProjectFile {

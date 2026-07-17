@@ -8,6 +8,7 @@ import { Header } from "@/components/Header";
 import { ArrowLeft, Clock, DollarSign, Building, CheckCircle, Briefcase } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { formatCurrency, deadlineText } from "@/lib/format";
 import { SERVICE_CATEGORIES } from "@/types/database";
 import type { Project } from "@/types/database";
 
@@ -91,7 +92,7 @@ const JobBoard = () => {
                 const daysLeft = job.deadline
                   ? differenceInCalendarDays(parseISO(job.deadline), new Date())
                   : null;
-                const budget = `$${Number(job.budget_min).toLocaleString()} - $${Number(job.budget_max).toLocaleString()}`;
+                const budget = `${formatCurrency(job.budget_min)} - ${formatCurrency(job.budget_max)}`;
                 const posted = formatDistanceToNow(new Date(job.created_at), { addSuffix: true });
 
                 return (
@@ -123,8 +124,10 @@ const JobBoard = () => {
                               </Badge>
                             )}
                           </div>
-                          <CardTitle className="text-xl text-foreground mb-3 hover:text-accent transition-colors">
-                            {job.title}
+                          <CardTitle className="text-xl text-foreground mb-3">
+                            <Link to={`/job/${job.id}`} className="hover:text-accent transition-colors">
+                              {job.title}
+                            </Link>
                           </CardTitle>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                             <div className="flex items-center gap-2 text-muted-foreground bg-muted/30 rounded-md px-2 py-1">
@@ -137,15 +140,7 @@ const JobBoard = () => {
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground bg-muted/30 rounded-md px-2 py-1">
                               <Clock className="w-4 h-4 text-accent" />
-                              <span>
-                                {daysLeft === null
-                                  ? 'Flexible deadline'
-                                  : daysLeft <= 0
-                                    ? 'Due today'
-                                    : daysLeft === 1
-                                      ? 'Due in 1 day'
-                                      : `Due in ${daysLeft} days`}
-                              </span>
+                              <span>{deadlineText(job.deadline)}</span>
                             </div>
                           </div>
                         </div>
@@ -195,9 +190,9 @@ const JobBoard = () => {
                           <CheckCircle className="w-4 h-4 text-accent" />
                           <span className="font-medium">Transparent billing • Expert verification required</span>
                         </div>
-                        <Link to={`/job/${job.id}/bid`}>
+                        <Link to={`/job/${job.id}`}>
                           <Button className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg">
-                            Submit Bid
+                            View Details
                           </Button>
                         </Link>
                       </div>

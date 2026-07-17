@@ -1,21 +1,25 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { AlertCircle, Briefcase, Building, Clock, DollarSign } from "lucide-react";
+import { AlertCircle, Briefcase, Building, Clock, Rocket } from "lucide-react";
+import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BidStatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { formatCurrency, pricePerHour } from "@/lib/format";
 import { Bid, Project } from "@/types/database";
 
 type BidWithProject = Bid & {
-  projects: Pick<Project, "title" | "category" | "company_name"> | null;
+  projects: Pick<Project, "title" | "category" | "company_name" | "status"> | null;
 };
 
 const ExpertDashboard = () => {
   const { user, expertProfile } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: bids, isLoading } = useQuery({
     queryKey: ["expert-bids", user?.id],
@@ -23,13 +27,27 @@ const ExpertDashboard = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bids")
-        .select("*, projects(title, category, company_name)")
+        .select("*, projects(title, category, company_name, status)")
         .eq("expert_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as BidWithProject[];
     },
   });
+
+  const withdrawMutation = useMutation({
+    mutationFn: async (bidId: string) => {
+      const { error } = await supabase.rpc("withdraw_bid", { p_bid_id: bidId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Bid withdrawn.");
+      queryClient.invalidateQueries({ queryKey: ["expert-bids", user?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message || "Could not withdraw the bid."),
+  });
+
+  const activeProjects = (bids ?? []).filter((b) => b.status === "accepted");
 
   return (
     <div className="min-h-screen bg-background">
@@ -85,6 +103,45 @@ const ExpertDashboard = () => {
             </Card>
           )}
 
+          {/* Active Projects — jobs this expert has won */}
+          {activeProjects.length > 0 && (
+            <div className="mb-12">
+              <div className="flex items-center gap-2 mb-4">
+                <Rocket className="w-5 h-5 text-accent" />
+                <h2 className="text-2xl font-bold text-foreground">Active Projects</h2>
+              </div>
+              <div className="grid gap-4">
+                {activeProjects.map((bid) => (
+                  <Card key={bid.id} className="border-accent/30 bg-accent/5">
+                    <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="default" className="bg-accent text-accent-foreground">
+                            Won
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {bid.projects?.company_name}
+                          </span>
+                        </div>
+                        <p className="text-lg font-semibold text-foreground">
+                          {bid.projects?.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Your fee: {formatCurrency(bid.bid_amount)} ·{" "}
+                          {Number(bid.estimated_hours).toLocaleString()} hrs
+                        </p>
+                      </div>
+                      <Button asChild variant="outline">
+                        <Link to={`/job/${bid.project_id}`}>View project</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h2 className="text-2xl font-bold text-foreground mb-4">All Bids</h2>
           {isLoading ? (
             <div className="flex justify-center py-12">
               <div className="animate-spin border-4 border-primary border-t-transparent rounded-full w-8 h-8" />
@@ -108,49 +165,72 @@ const ExpertDashboard = () => {
           ) : (
             <div className="grid gap-6">
               {bids.map((bid) => (
-                <Card
-                  key={bid.id}
-                  className="hover:shadow-card transition-all duration-300"
-                >
+                <Card key={bid.id} className="hover:shadow-card transition-all duration-300">
                   <CardHeader>
                     <div className="flex flex-wrap items-center gap-2 mb-3">
                       {bid.projects?.category && (
-                        <Badge
-                          variant="default"
-                          className="bg-accent text-accent-foreground"
-                        >
+                        <Badge variant="default" className="bg-accent text-accent-foreground">
                           {bid.projects.category}
                         </Badge>
                       )}
-                      <Badge variant="secondary">Bid {bid.status}</Badge>
+                      <BidStatusBadge status={bid.status} />
                     </div>
                     <CardTitle className="text-xl">
-                      {bid.projects?.title}
+                      <Link
+                        to={`/job/${bid.project_id}`}
+                        className="hover:text-accent transition-colors"
+                      >
+                        {bid.projects?.title ?? "Project"}
+                      </Link>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
                       {bid.projects?.company_name && (
                         <span className="flex items-center gap-2">
                           <Building className="w-4 h-4" />
                           {bid.projects.company_name}
                         </span>
                       )}
-                      <span className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />$
-                        {Number(bid.hourly_rate).toLocaleString()}/hr ×{" "}
-                        {Number(bid.estimated_hours).toLocaleString()} hrs = $
-                        {(
-                          Number(bid.hourly_rate) * Number(bid.estimated_hours)
-                        ).toLocaleString()}
+                      <span>
+                        <span className="font-semibold text-foreground">
+                          {formatCurrency(bid.bid_amount)}
+                        </span>{" "}
+                        · {Number(bid.estimated_hours).toLocaleString()} hrs ·{" "}
+                        {pricePerHour(Number(bid.bid_amount), Number(bid.estimated_hours))}
                       </span>
                       <span>
                         Submitted{" "}
-                        {formatDistanceToNow(new Date(bid.created_at), {
-                          addSuffix: true,
-                        })}
+                        {formatDistanceToNow(new Date(bid.created_at), { addSuffix: true })}
                       </span>
                     </div>
+
+                    {bid.status === "declined" && bid.decline_reason && (
+                      <p className="text-sm text-muted-foreground mt-3">
+                        <span className="font-medium text-foreground">Reason: </span>
+                        {bid.decline_reason}
+                      </p>
+                    )}
+
+                    {bid.status === "pending" && (
+                      <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
+                        <Button asChild variant="accent" size="sm">
+                          <Link to={`/job/${bid.project_id}/bid`}>Edit bid</Link>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={withdrawMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm("Withdraw this bid? This cannot be undone.")) {
+                              withdrawMutation.mutate(bid.id);
+                            }
+                          }}
+                        >
+                          Withdraw
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}

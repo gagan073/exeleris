@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { differenceInCalendarDays, parseISO } from "date-fns";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,125 +9,142 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Header } from "@/components/Header";
+import { BidStatusBadge } from "@/components/StatusBadge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { Project, ProjectFile } from "@/types/database";
+import { formatCurrency, pricePerHour, deadlineText } from "@/lib/format";
+import { Bid, Project } from "@/types/database";
 import {
   ArrowLeft,
   DollarSign,
   Clock,
-  CheckCircle,
   Building,
   Briefcase,
-  FileText,
 } from "lucide-react";
-
-const getDueText = (deadline: string | null) => {
-  if (!deadline) return "Flexible deadline";
-  const days = differenceInCalendarDays(parseISO(deadline), new Date());
-  if (days <= 0) return "Due today";
-  if (days === 1) return "Due in 1 day";
-  return `Due in ${days} days`;
-};
 
 const SubmitBid = () => {
   const { jobId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user, expertProfile } = useAuth();
 
-  const [hourlyRate, setHourlyRate] = useState("");
+  const [bidAmount, setBidAmount] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
-  const [completionTime, setCompletionTime] = useState("");
+  const [completionDate, setCompletionDate] = useState("");
   const [approach, setApproach] = useState("");
   const [experience, setExperience] = useState("");
   const [questions, setQuestions] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const prefilled = useRef(false);
+
+  const today = new Date().toISOString().split("T")[0];
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", jobId],
+    enabled: !!jobId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
         .select("*")
         .eq("id", jobId)
-        .eq("status", "published")
         .maybeSingle();
       if (error) throw error;
       return (data as Project) ?? null;
     },
-    enabled: !!jobId,
   });
 
-  const { data: projectFiles } = useQuery({
-    queryKey: ["project-files", jobId],
+  const { data: existingBid, isLoading: bidLoading } = useQuery({
+    queryKey: ["my-bid", jobId, user?.id],
+    enabled: !!jobId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("project_files")
+        .from("bids")
         .select("*")
-        .eq("project_id", jobId);
+        .eq("project_id", jobId)
+        .eq("expert_id", user!.id)
+        .maybeSingle();
       if (error) throw error;
-      return (data as ProjectFile[]) ?? [];
+      return (data as Bid) ?? null;
     },
-    enabled: !!jobId,
   });
 
-  const totalCost =
-    hourlyRate && estimatedHours
-      ? (parseFloat(hourlyRate) * parseFloat(estimatedHours)).toFixed(2)
-      : "0.00";
-
+  const isOpen = project?.status === "published";
   const isApproved = expertProfile?.approval_status === "approved";
   const isRejected = expertProfile?.approval_status === "rejected";
+  // We show the editable form only for a brand-new bid, or when editing a
+  // still-Pending bid on an open project.
+  const isEditing = !!existingBid && existingBid.status === "pending" && isOpen;
+  const showForm = isOpen && isApproved && (!existingBid || isEditing);
 
-  const openFile = async (file: ProjectFile) => {
-    const { data, error } = await supabase.storage
-      .from("project-files")
-      .createSignedUrl(file.storage_path, 3600);
-    if (error || !data?.signedUrl) {
-      toast.error("Could not open the file. Please try again.");
-      return;
+  // Prefill the form once when editing an existing pending bid.
+  useEffect(() => {
+    if (isEditing && existingBid && !prefilled.current) {
+      prefilled.current = true;
+      setBidAmount(String(existingBid.bid_amount ?? ""));
+      setEstimatedHours(String(existingBid.estimated_hours ?? ""));
+      setCompletionDate(existingBid.estimated_completion_date ?? "");
+      setApproach(existingBid.approach ?? "");
+      setExperience(existingBid.experience ?? "");
+      setQuestions(existingBid.questions ?? "");
     }
-    window.open(data.signedUrl, "_blank");
+  }, [isEditing, existingBid]);
+
+  const amountNum = parseFloat(bidAmount);
+  const hoursNum = parseFloat(estimatedHours);
+  const perHour = pricePerHour(amountNum || 0, hoursNum || 0);
+
+  const refreshBidQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-bid", jobId, user?.id] });
+    queryClient.invalidateQueries({ queryKey: ["expert-bids", user?.id] });
   };
 
   const handleSubmit = async () => {
-    const rate = Number(hourlyRate);
-    const hours = Number(estimatedHours);
-    if (!rate || rate <= 0) {
-      toast.error("Please enter a valid hourly rate.");
+    if (!amountNum || amountNum <= 0) {
+      toast.error("Please enter your price for the whole job.");
       return;
     }
-    if (!hours || hours <= 0) {
-      toast.error("Please enter valid estimated hours.");
+    if (!hoursNum || hoursNum <= 0) {
+      toast.error("Please enter your estimated hours.");
       return;
     }
     if (!project || !user) return;
 
-    setSubmitting(true);
-    const { error } = await supabase.from("bids").insert({
-      project_id: project.id,
-      expert_id: user.id,
-      hourly_rate: rate,
-      estimated_hours: hours,
-      completion_time: completionTime.trim() || null,
+    const payload = {
+      bid_amount: amountNum,
+      estimated_hours: hoursNum,
+      estimated_completion_date: completionDate || null,
       approach: approach.trim() || null,
       experience: experience.trim() || null,
       questions: questions.trim() || null,
-    });
+    };
+
+    setSubmitting(true);
+    let error;
+    if (isEditing && existingBid) {
+      ({ error } = await supabase.from("bids").update(payload).eq("id", existingBid.id));
+    } else {
+      ({ error } = await supabase
+        .from("bids")
+        .insert({ project_id: project.id, expert_id: user.id, ...payload }));
+    }
     setSubmitting(false);
 
     if (error) {
-      if (error.code === "23505") {
+      if ((error as { code?: string }).code === "23505") {
         toast.error("You've already submitted a bid on this project.");
+        refreshBidQueries();
       } else {
         toast.error(error.message);
       }
       return;
     }
 
-    toast.success("Bid submitted! The client will review it shortly.");
+    toast.success(isEditing ? "Your bid was updated." : "Bid submitted! The client will review it shortly.");
+    refreshBidQueries();
     navigate("/dashboard");
   };
+
+  const loading = projectLoading || bidLoading;
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,17 +152,20 @@ const SubmitBid = () => {
       <div className="pt-20">
         <div className="container mx-auto px-6 py-12">
           <div className="mb-8">
-            <Link to="/jobs" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link
+              to={jobId ? `/job/${jobId}` : "/jobs"}
+              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            >
               <ArrowLeft className="w-4 h-4" />
-              Back to Job Board
+              Back to project
             </Link>
           </div>
 
-          {projectLoading ? (
+          {loading ? (
             <div className="flex justify-center py-20">
               <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : !project ? (
+          ) : !project && !existingBid ? (
             <Card className="max-w-xl mx-auto">
               <CardContent className="p-12 text-center">
                 <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -163,97 +182,110 @@ const SubmitBid = () => {
             </Card>
           ) : (
             <div className="max-w-4xl mx-auto grid lg:grid-cols-2 gap-8">
-              {/* Job Details */}
+              {/* Project recap */}
               <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="secondary">{project.category}</Badge>
-                      <Badge variant="outline">{project.completion_percent}% Complete</Badge>
-                    </div>
-                    <CardTitle className="text-xl text-foreground">
-                      {project.title}
-                    </CardTitle>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Building className="w-4 h-4" />
-                        {project.company_name}
+                {project && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="secondary">{project.category}</Badge>
+                        <Badge variant="outline">{project.completion_percent}% Complete</Badge>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
-                        ${Number(project.budget_min).toLocaleString()} - ${Number(project.budget_max).toLocaleString()}
+                      <CardTitle className="text-xl text-foreground">{project.title}</CardTitle>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground pt-2">
+                        <span className="flex items-center gap-1">
+                          <Building className="w-4 h-4" />
+                          {project.company_name}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <DollarSign className="w-4 h-4" />
+                          {formatCurrency(project.budget_min)} – {formatCurrency(project.budget_max)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          {deadlineText(project.deadline)}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {getDueText(project.deadline)}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold text-foreground mb-2">Project Description</h4>
-                      <p className="text-muted-foreground">{project.description}</p>
-                    </div>
-
-                    {project.ai_tools?.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold text-foreground mb-2">AI Tools Used</h4>
-                        <div className="flex flex-wrap gap-1">
-                          {project.ai_tools.map((tool, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {tool}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {project.skills?.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold text-foreground mb-2">Required Skills</h4>
-                        <div className="flex flex-wrap gap-1">
-                          {project.skills.map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {projectFiles && projectFiles.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold text-foreground mb-2">Attached Documents</h4>
-                        <div className="space-y-1">
-                          {projectFiles.map((file) => (
-                            <button
-                              key={file.id}
-                              type="button"
-                              onClick={() => openFile(file)}
-                              className="flex items-center gap-2 text-sm text-accent hover:underline"
-                            >
-                              <FileText className="w-4 h-4" />
-                              {file.file_name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground line-clamp-6 whitespace-pre-line">
+                        {project.description}
+                      </p>
+                      <Link
+                        to={`/job/${project.id}`}
+                        className="text-sm text-accent hover:underline mt-3 inline-block"
+                      >
+                        View full project details
+                      </Link>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
-              {/* Bid Form */}
+              {/* Bid form / status */}
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Submit Your Bid</CardTitle>
+                    <CardTitle>{isEditing ? "Edit Your Bid" : "Submit Your Bid"}</CardTitle>
                     <p className="text-muted-foreground">
-                      Provide your hourly rate and estimated time to complete this project
+                      Give the client your price for finishing the whole job.
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {!isApproved ? (
+                    {/* Already bid (not editable) */}
+                    {existingBid && !isEditing ? (
+                      <div className="space-y-4">
+                        <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-foreground">
+                              You've already submitted a bid
+                            </span>
+                            <BidStatusBadge status={existingBid.status} />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {existingBid.status === "accepted"
+                              ? "Congratulations — your bid was accepted!"
+                              : existingBid.status === "declined"
+                                ? "This bid was declined by the client."
+                                : existingBid.status === "withdrawn"
+                                  ? "You withdrew this bid."
+                                  : "The client is reviewing bids on this project."}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border p-4 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Your price</span>
+                            <span className="font-semibold text-foreground">
+                              {formatCurrency(existingBid.bid_amount)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Estimated hours</span>
+                            <span className="font-semibold text-foreground">
+                              {Number(existingBid.estimated_hours).toLocaleString()} hrs
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Works out to</span>
+                            <span className="font-semibold text-foreground">
+                              {pricePerHour(
+                                Number(existingBid.bid_amount),
+                                Number(existingBid.estimated_hours)
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        <Button asChild variant="outline" className="w-full">
+                          <Link to="/dashboard">Go to My Bids</Link>
+                        </Button>
+                      </div>
+                    ) : !isOpen ? (
+                      <div className="bg-muted/50 border rounded-lg p-6 text-center">
+                        <p className="text-muted-foreground">
+                          This project is no longer open for bids.
+                        </p>
+                      </div>
+                    ) : !isApproved ? (
                       <div className="bg-accent/10 border border-accent/20 rounded-lg p-6">
                         <div className="flex items-start gap-3">
                           <Clock className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
@@ -275,14 +307,16 @@ const SubmitBid = () => {
                       <>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="hourly-rate">Hourly Rate (USD)</Label>
+                            <Label htmlFor="bid-amount">Your Price (USD)</Label>
                             <Input
-                              id="hourly-rate"
+                              id="bid-amount"
                               type="number"
-                              placeholder="150"
-                              value={hourlyRate}
-                              onChange={(e) => setHourlyRate(e.target.value)}
+                              min={1}
+                              placeholder="1200"
+                              value={bidAmount}
+                              onChange={(e) => setBidAmount(e.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">For the whole job</p>
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="estimated-hours">Estimated Hours</Label>
@@ -290,32 +324,35 @@ const SubmitBid = () => {
                               id="estimated-hours"
                               type="number"
                               step="0.5"
+                              min={0.5}
                               placeholder="8"
                               value={estimatedHours}
                               onChange={(e) => setEstimatedHours(e.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">To complete it</p>
                           </div>
                         </div>
 
                         <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">
                           <div className="flex justify-between items-center">
-                            <span className="font-semibold text-foreground">Total Project Cost:</span>
-                            <span className="text-2xl font-bold text-accent">${totalCost}</span>
+                            <span className="font-semibold text-foreground">Works out to:</span>
+                            <span className="text-2xl font-bold text-accent">{perHour}</span>
                           </div>
-                          {hourlyRate && estimatedHours && (
+                          {amountNum > 0 && hoursNum > 0 && (
                             <p className="text-sm text-muted-foreground mt-2">
-                              ${hourlyRate}/hour × {estimatedHours} hours = ${totalCost}
+                              {formatCurrency(amountNum)} ÷ {hoursNum} hours = {perHour}
                             </p>
                           )}
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="completion-time">Estimated Completion Time</Label>
+                          <Label htmlFor="completion-date">Estimated Completion Date</Label>
                           <Input
-                            id="completion-time"
-                            placeholder="e.g., 2 days, 1 week"
-                            value={completionTime}
-                            onChange={(e) => setCompletionTime(e.target.value)}
+                            id="completion-date"
+                            type="date"
+                            min={today}
+                            value={completionDate}
+                            onChange={(e) => setCompletionDate(e.target.value)}
                           />
                         </div>
 
@@ -323,7 +360,7 @@ const SubmitBid = () => {
                           <Label htmlFor="approach">Your Approach</Label>
                           <Textarea
                             id="approach"
-                            placeholder="Describe how you'll approach finishing this AI-enhanced deliverable..."
+                            placeholder="Describe how you'll approach finishing this AI-made deliverable..."
                             className="min-h-[120px]"
                             value={approach}
                             onChange={(e) => setApproach(e.target.value)}
@@ -342,32 +379,14 @@ const SubmitBid = () => {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="questions">Questions/Clarifications</Label>
+                          <Label htmlFor="questions">Questions for the Business</Label>
                           <Textarea
                             id="questions"
-                            placeholder="Any questions about the project or additional clarifications needed..."
+                            placeholder="Any questions or clarifications you need before starting..."
                             className="min-h-[80px]"
                             value={questions}
                             onChange={(e) => setQuestions(e.target.value)}
                           />
-                        </div>
-
-                        <div className="bg-muted/50 border rounded-lg p-4">
-                          <h4 className="font-semibold text-foreground mb-2">Exeleris Guarantee</h4>
-                          <ul className="space-y-1 text-sm text-muted-foreground">
-                            <li className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-accent" />
-                              Transparent hourly billing with detailed time tracking
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-accent" />
-                              Payment protection through escrow system
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-accent" />
-                              Quality guarantee with revision opportunities
-                            </li>
-                          </ul>
                         </div>
 
                         <Button
@@ -376,10 +395,14 @@ const SubmitBid = () => {
                           onClick={handleSubmit}
                           disabled={submitting}
                         >
-                          {submitting ? "Submitting..." : "Submit Bid"}
+                          {submitting
+                            ? "Saving..."
+                            : isEditing
+                              ? "Update Bid"
+                              : "Submit Bid"}
                         </Button>
                         <p className="text-sm text-muted-foreground text-center">
-                          The client will review your bid and respond within 24 hours
+                          You can edit or withdraw your bid while it's still pending.
                         </p>
                       </>
                     )}
