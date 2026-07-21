@@ -76,17 +76,19 @@ While you're testing, it's easier if new accounts work instantly:
    ```
 3. On the website, **sign out and sign back in**. Your dashboard is now the Admin dashboard. 👑
 
-## Part 7 — Approving experts (until the admin panel is built)
+## Part 7 — Approving experts
 
-New experts start as "pending approval" and can't bid. To approve one, run this in the SQL Editor
-(replace the email with the expert's email):
+New experts start as "pending approval" and can't bid. Once you've run **Part 9**
+below, you approve (or reject) them with two clicks in the **Admin area →
+Experts** tab — no SQL needed. Rejecting lets you add a reason, which is sent to
+the expert as a notification.
 
-```sql
-update public.expert_profiles set approval_status = 'approved'
-where id = (select id from public.profiles where email = 'expert@example.com');
-```
-
-The full point-and-click admin panel for this is coming in a later session.
+> Prefer SQL? You can still approve an expert directly in the SQL Editor
+> (replace the email with the expert's email):
+> ```sql
+> update public.expert_profiles set approval_status = 'approved'
+> where id = (select id from public.profiles where email = 'expert@example.com');
+> ```
 
 ---
 
@@ -104,7 +106,7 @@ Do these in order — about 5 minutes:
 8. **Approve yourself as a test:** run the Part 7 SQL with the expert's email, then refresh the site. Now the bid form should appear — submit a bid with a price and hours. Your expert dashboard should list the bid.
 9. **Bid twice:** try to bid on the same project again — the site should politely tell you that you already bid.
 10. **Check role locks:** while signed in as the expert, try visiting `/submit-project` directly in the address bar — you should be bounced back to your dashboard.
-11. **Super Admin:** sign in with your own (admin) account — your dashboard should show the Users / Transactions / Settings placeholder page.
+11. **Super Admin:** sign in with your own (admin) account — you should land on the **Admin area** (the Overview, with live numbers). If you haven't run Part 9 yet, do that first.
 
 If every step works, the marketplace is officially real. 🎉
 
@@ -136,7 +138,8 @@ so your money history stays accurate even if you change the rate later.
 ## Testing checklist — the full bidding journey (plain English)
 
 Do this after Part 8. You'll need two accounts: your **business** account and one
-**expert** account (approve the expert first using the Part 7 SQL). About 10 minutes.
+**expert** account (approve the expert first in the **Admin area → Experts**, or
+with the Part 7 SQL). About 10 minutes.
 
 1. **Expert places a bid.** Sign in as the approved expert → **Browse Jobs** →
    **View Details** on a project → **Submit Bid**. Enter a **price for the whole
@@ -177,3 +180,60 @@ If all eight steps work, the heart of the marketplace is beating. ❤️
 > Note on confidential files: on a project's detail page, any file marked
 > **Confidential** shows as **locked** ("Available after your bid is accepted")
 > — its name is visible but it can't be opened by bidders.
+
+---
+
+## Part 9 — Turn on the Super Admin area (one more copy-paste)
+
+This adds your control centre: an overview of every key number, a user list with
+deactivate/reactivate, the expert approval queue, the full transactions table with
+an Excel download, and the commission control with a change history. It only
+**adds** to your database — nothing existing is touched.
+
+1. In Supabase's left sidebar, click **SQL Editor** → **New query**.
+2. On your computer, open **`supabase/admin_upgrade.sql`** inside the project
+   folder (right-click → Open with → Notepad).
+3. Select **everything** (Ctrl+A), copy (Ctrl+C), paste into the SQL Editor
+   (Ctrl+V), and click **Run**. You should see **"Success. No rows returned."**
+
+> If you ever see "already exists", that's fine — it just means it was already
+> run. Safe to run again.
+
+Now sign in with your **Super Admin** account. Your account menu (top-right) shows
+**Admin area**, and `/dashboard` sends you straight there.
+
+### Testing checklist — the Super Admin area (plain English)
+
+1. **Overview:** sign in as Super Admin → you land on **Overview**. Check the
+   cards — total users (split into businesses/experts), projects, in progress,
+   total bids, value of accepted bids, and your **commission earnings** (gold).
+   The chart shows the last 8 weeks of activity.
+2. **Users:** open **Users**. Search by name or email. On a *test* account (not
+   yourself, not another admin) click **Deactivate**. Sign out, try to sign in as
+   that person → you're immediately signed back out with a "deactivated" message.
+   Back as admin, **Reactivate** them and confirm they can sign in again.
+3. **Experts:** open **Experts**. Your pending test expert is listed with their
+   full application (headline, profession, license, experience, skills, categories,
+   and whether they agreed to the Manifesto). Click **Approve**.
+4. **Bidding gate:** a *pending* expert who tries to bid still sees the friendly
+   "being reviewed" message; the one you just **approved** now gets the bid form
+   and can submit. (Try **Reject** on another test expert with a reason — they get
+   a notification with your reason.)
+5. **Settings:** open **Settings**. Change the commission to a new number (say
+   **20%**) and save. The **change history** logs it (you, the time, old → new).
+6. **New rate applies everywhere:** as a **business**, accept a new bid — the
+   money-split window now shows **20%**. Open **Transactions** and confirm the new
+   row used **20%**. (Older transactions keep the rate they were recorded with.)
+7. **Download:** in **Transactions**, use the date/status filters, check the
+   **totals row** at the bottom, then click **Download (CSV)** and open it in Excel.
+8. **Safety:** sign in as a business or expert and type `/admin` (or
+   `/admin/transactions`) into the address bar → you're bounced to your own
+   dashboard and no admin data loads.
+
+### The Transparency Manifesto
+
+New experts must tick "I agree to the Transparency Manifesto" before their
+application is submitted (you'll see the confirmation on their card in **Experts**).
+The current wording is **placeholder** text about honesty, transparent billing, and
+disclosing AI usage — send me the real wording whenever it's ready and I'll drop it
+straight in (it lives in one file: `src/lib/manifesto.ts`).

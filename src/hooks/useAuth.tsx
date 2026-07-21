@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Profile, ExpertProfile } from "@/types/database";
 
@@ -27,6 +28,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .select("*")
       .eq("id", userId)
       .maybeSingle();
+
+    // Instant in-app block: a deactivated account is signed straight back out,
+    // so it can't reach any page. (is_active can be undefined on databases where
+    // admin_upgrade.sql hasn't run yet — only false counts as deactivated.)
+    if (prof && (prof as Profile).is_active === false) {
+      toast.error(
+        "This account has been deactivated. Please contact support if you think this is a mistake."
+      );
+      await supabase.auth.signOut();
+      setProfile(null);
+      setExpertProfile(null);
+      return;
+    }
+
     setProfile((prof as Profile) ?? null);
     if (prof?.role === "expert") {
       const { data: expert } = await supabase

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Header } from "@/components/Header";
@@ -12,6 +13,12 @@ import { ArrowLeft, Building2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  MANIFESTO_AGREE_LABEL,
+  MANIFESTO_INTRO,
+  MANIFESTO_POINTS,
+  MANIFESTO_TITLE,
+} from "@/lib/manifesto";
 import {
   AppRole,
   EXPERIENCE_LEVELS,
@@ -61,6 +68,7 @@ const Auth = () => {
   const [yearsExperience, setYearsExperience] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [agreedToManifesto, setAgreedToManifesto] = useState(false);
   const [signingUp, setSigningUp] = useState(false);
 
   if (!loading && user) {
@@ -152,6 +160,10 @@ const Auth = () => {
         toast.error("Please select at least one service category");
         return;
       }
+      if (!agreedToManifesto) {
+        toast.error("Please read and agree to the Transparency Manifesto to continue");
+        return;
+      }
     }
 
     const metadata: Record<string, unknown> = {
@@ -167,6 +179,7 @@ const Auth = () => {
       metadata.years_experience = yearsExperience || null;
       metadata.skills = selectedSkills;
       metadata.categories = selectedCategories;
+      metadata.manifesto_agreed = agreedToManifesto;
     }
 
     setSigningUp(true);
@@ -433,6 +446,35 @@ const Auth = () => {
                                 ))}
                               </div>
                             )}
+                          </div>
+
+                          {/* Transparency Manifesto — experts must read & agree
+                              before their application is submitted. */}
+                          <div className="space-y-3">
+                            <Label>{MANIFESTO_TITLE}</Label>
+                            <div className="max-h-56 overflow-y-auto rounded-lg border bg-secondary/40 p-4 space-y-3 text-sm">
+                              <p className="text-muted-foreground">{MANIFESTO_INTRO}</p>
+                              <ul className="space-y-3">
+                                {MANIFESTO_POINTS.map((point) => (
+                                  <li key={point.heading}>
+                                    <p className="font-semibold text-foreground">{point.heading}</p>
+                                    <p className="text-muted-foreground">{point.body}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <label className="flex items-start gap-3 cursor-pointer">
+                              <Checkbox
+                                checked={agreedToManifesto}
+                                onCheckedChange={(checked) =>
+                                  setAgreedToManifesto(checked === true)
+                                }
+                                className="mt-0.5"
+                              />
+                              <span className="text-sm text-foreground">
+                                {MANIFESTO_AGREE_LABEL}
+                              </span>
+                            </label>
                           </div>
 
                           <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">

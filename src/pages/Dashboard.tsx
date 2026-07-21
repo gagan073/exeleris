@@ -1,10 +1,10 @@
+import { Navigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import BusinessDashboard from "./dashboard/BusinessDashboard";
 import ExpertDashboard from "./dashboard/ExpertDashboard";
-import AdminDashboard from "./dashboard/AdminDashboard";
 
 const Dashboard = () => {
   const { profile, signOut } = useAuth();
@@ -37,7 +37,8 @@ const Dashboard = () => {
 
   if (profile.role === "business") return <BusinessDashboard />;
   if (profile.role === "expert") return <ExpertDashboard />;
-  return <AdminDashboard />;
+  // Super Admins get the dedicated admin area.
+  return <Navigate to="/admin" replace />;
 };
 
 export default Dashboard;

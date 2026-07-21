@@ -14,6 +14,12 @@ import SubmitBid from "./pages/SubmitBid";
 import BidComparison from "./pages/BidComparison";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminOverview from "./pages/admin/AdminOverview";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminExperts from "./pages/admin/AdminExperts";
+import AdminTransactions from "./pages/admin/AdminTransactions";
+import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +69,22 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Super Admin area — every route locked to super_admin. Anyone else
+                (even guessing the URL) is bounced to their own dashboard. */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={["super_admin"]}>
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<AdminOverview />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="experts" element={<AdminExperts />} />
+              <Route path="transactions" element={<AdminTransactions />} />
+              <Route path="settings" element={<AdminSettings />} />
+            </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

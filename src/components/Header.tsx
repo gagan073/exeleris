@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/NotificationBell";
-import { ChevronDown, LayoutDashboard, LogOut, User } from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, ShieldCheck, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 export const Header = () => {
@@ -57,10 +57,17 @@ export const Header = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => navigate("/dashboard")}>
-                      <LayoutDashboard className="w-4 h-4 mr-2" />
-                      Dashboard
-                    </DropdownMenuItem>
+                    {profile?.role === "super_admin" ? (
+                      <DropdownMenuItem onClick={() => navigate("/admin")}>
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Admin area
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => navigate("/dashboard")}>
+                        <LayoutDashboard className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={handleSignOut}>
                       <LogOut className="w-4 h-4 mr-2" />
                       Sign Out

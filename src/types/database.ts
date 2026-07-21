@@ -21,6 +21,9 @@ export interface Profile {
   role: AppRole;
   company_name: string | null;
   created_at: string;
+  // Added by admin_upgrade.sql. A deactivated account is signed out and blocked.
+  // Older rows loaded before the column existed may be undefined — treat as active.
+  is_active?: boolean;
 }
 
 export interface ExpertProfile {
@@ -33,6 +36,9 @@ export interface ExpertProfile {
   categories: string[];
   approval_status: ApprovalStatus;
   created_at: string;
+  // Added by admin_upgrade.sql.
+  manifesto_agreed_at?: string | null;
+  rejection_reason?: string | null;
 }
 
 // The AI's analysis of an uploaded deliverable. Saved with the project and
@@ -121,6 +127,16 @@ export interface PlatformSettings {
   id: boolean;
   commission_percent: number;
   updated_at: string;
+}
+
+// One entry in the commission change log (see admin_upgrade.sql). Powers the
+// "history of changes" list on the Super Admin Settings screen.
+export interface CommissionChange {
+  id: string;
+  changed_by: string | null;
+  old_percent: number;
+  new_percent: number;
+  changed_at: string;
 }
 
 export interface ProjectFile {
